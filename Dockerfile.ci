@@ -1,0 +1,26 @@
+# --------------------------------------------------------------------------------
+# ETAPA 1: BUILD_AND_TEST (Compilação e Testes)
+# --------------------------------------------------------------------------------
+FROM maven:3.9.5-eclipse-temurin-17 AS BUILD_AND_TEST
+
+# Diretório de trabalho e cópia de arquivos
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline
+COPY src ./src
+
+# Comando que executa os testes e falha o build se os testes falharem
+RUN mvn package
+
+# --------------------------------------------------------------------------------
+# ETAPA 2: RUNTIME_FINAL (Imagem Leve para Execução)
+# --------------------------------------------------------------------------------
+FROM eclipse-temurin:17-jre-alpine AS RUNTIME_FINAL
+
+WORKDIR /usr/local/devcalc
+
+# COPIA CORRIGIDA: Usa o nome do Fat JAR e referencia o nome do estágio 'BUILD_AND_TEST'
+COPY --from=BUILD_AND_TEST /app/target/devcalc-api-full.jar devcalc-api.jar
+
+EXPOSE 7000
+ENTRYPOINT ["java", "-jar", "devcalc-api.jar"]
