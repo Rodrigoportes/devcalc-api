@@ -1,0 +1,77 @@
+version: '3.8'
+
+# Define a rede interna
+networks:
+  devcalc_net:
+    driver: bridge
+
+# Define os volumes de persistência e compartilhamento
+volumes:
+  postgres_data:
+  redis_data:
+  shared_volume: # Volume compartilhado entre containers
+
+services:
+  # 1. POSTGRES (Relacional)
+  postgres:
+    image: postgres:15-alpine
+    container_name: devcalc_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: devcalc_user
+      POSTGRES_PASSWORD: devcalc_password
+      POSTGRES_DB: devcalc_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - shared_volume:/mnt/shared_data
+    networks:
+      - devcalc_net
+    # Health Check (Requerido)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devcalc_user -d devcalc_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. REDIS (Não Relacional)
+  redis:
+    image: redis:7-alpine
+    container_name: devcalc_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+      - shared_volume:/mnt/shared_data
+    networks:
+      - devcalc_net
+    # Health Check (Requerido)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # 3. SUA APLICAÇÃO (DevCalc API)
+  devcalc-api:
+    image: rodrigopotes/devcalc-api:latest # Use a sua imagem do Docker Hub!
+    container_name: devcalc_api
+    ports:
+      - "7000:7000"
+    networks:
+      - devcalc_net
+    depends_on:
+      # Garante que a API só inicia após os bancos de dados estarem saudáveis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 4. CONTAINER DE TESTE (Busybox)
+  tester:
+    image: busybox:latest
+    container_name: devcalc_tester
+    volumes:
+      - shared_volume:/mnt/shared_data
+    networks:
+      - devcalc_net
+    # Mantém o container rodando para que possamos entrar nele (exec)
+    command: sh -c "while true; do sleep 3600; done"r
